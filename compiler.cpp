@@ -12,9 +12,13 @@ enum TokenType
 {
     T_INT,
     T_FLOAT,
+    T_DOUBLE,
+    T_STRING,
+    T_BOOL,
+    T_CHAR,
     T_ID,
     T_NUM,
-    T_FLOAT_NUM,
+    T_NUM_FLOAT,
     T_IF,
     T_ELSE,
     T_RETURN,
@@ -37,6 +41,145 @@ struct Token
 {
     TokenType type;
     string value;
+    int line; // To store the line number
+};
+
+class Lexer
+{
+private:
+    string src;
+    size_t pos;
+    int line;
+
+public:
+    Lexer(const string &src)
+    {
+        this->src = src;
+        this->pos = 0;
+        this->line = 1; // Initialize line number
+    }
+
+    string consumeNumber()
+    {
+        size_t start = pos;
+        while (pos < src.size() && (isdigit(src[pos]) || src[pos] == '.'))
+            pos++;
+        return src.substr(start, pos - start);
+    }
+
+    string consumeWord()
+    {
+        size_t start = pos;
+        while (pos < src.size() && isalnum(src[pos]))
+            pos++;
+        return src.substr(start, pos - start);
+    }
+
+    vector<Token> tokenizer()
+    {
+        vector<Token> tokens;
+        while (pos < src.size())
+        {
+            char current = src[pos];
+
+            if (current == '\n') // Count line breaks
+            {
+                line++;
+                pos++;
+                continue;
+            }
+
+            if (isspace(current))
+            {
+                pos++;
+                continue;
+            }
+
+            if (isdigit(current))
+            {
+                string numStr = consumeNumber();
+                if (numStr.find('.') != string::npos) // Float or Double
+                {
+                    tokens.push_back(Token{T_NUM_FLOAT, numStr, line});
+                }
+                else
+                {
+                    tokens.push_back(Token{T_NUM, numStr, line});
+                }
+                continue;
+            }
+
+            if (isalpha(current))
+            {
+                string word = consumeWord();
+                if (word == "int")
+                    tokens.push_back(Token{T_INT, word, line});
+                else if (word == "float")
+                    tokens.push_back(Token{T_FLOAT, word, line});
+                else if (word == "double")
+                    tokens.push_back(Token{T_DOUBLE, word, line});
+                else if (word == "string")
+                    tokens.push_back(Token{T_STRING, word, line});
+                else if (word == "bool")
+                    tokens.push_back(Token{T_BOOL, word, line});
+                else if (word == "char")
+                    tokens.push_back(Token{T_CHAR, word, line});
+                else if (word == "if")
+                    tokens.push_back(Token{T_IF, word, line});
+                else if (word == "else")
+                    tokens.push_back(Token{T_ELSE, word, line});
+                else if (word == "return")
+                    tokens.push_back(Token{T_RETURN, word, line});
+                else
+                    tokens.push_back(Token{T_ID, word, line});
+                continue;
+            }
+
+            // Start of the switch case for handling special characters
+            switch (current)
+            {
+            case '=':
+                tokens.push_back(Token{T_ASSIGN, "=", line});
+                break;
+            case '+':
+                tokens.push_back(Token{T_PLUS, "+", line});
+                break;
+            case '-':
+                tokens.push_back(Token{T_MINUS, "-", line});
+                break;
+            case '*':
+                tokens.push_back(Token{T_MUL, "*", line});
+                break;
+            case '/':
+                tokens.push_back(Token{T_DIV, "/", line});
+                break;
+            case '(':
+                tokens.push_back(Token{T_LPAREN, "(", line});
+                break;
+            case ')':
+                tokens.push_back(Token{T_RPAREN, ")", line});
+                break;
+            case '{':
+                tokens.push_back(Token{T_LBRACE, "{", line});
+                break;
+            case '}':
+                tokens.push_back(Token{T_RBRACE, "}", line});
+                break;
+            case ';':
+                tokens.push_back(Token{T_SEMICOLON, ";", line});
+                break;
+            case '>':
+                tokens.push_back(Token{T_GT, ">", line});
+                break;
+            default:
+                cout << "Error at line " << line << ": Unexpected character: " << current << endl;
+                exit(1);
+            }
+            pos++;
+        }
+        tokens.push_back(Token{T_EOF, "", line});
+        return tokens;
+    }
 };
 
 class Parser
@@ -63,11 +206,8 @@ public:
 
     void parseStatement()
     {
-        if (tokens[pos].type == T_INT)
-        {
-            parseDeclaration();
-        }
-        else if (tokens[pos].type == T_FLOAT)
+        if (tokens[pos].type == T_INT || tokens[pos].type == T_FLOAT || tokens[pos].type == T_DOUBLE ||
+            tokens[pos].type == T_STRING || tokens[pos].type == T_BOOL || tokens[pos].type == T_CHAR)
         {
             parseDeclaration();
         }
@@ -89,7 +229,7 @@ public:
         }
         else
         {
-            cout << "Syntax error: unexpected token " << tokens[pos].value << " on line " << pos + 1 << endl;
+            cout << "Syntax error at line " << tokens[pos].line << ": unexpected token " << tokens[pos].value << endl;
             exit(1);
         }
     }
@@ -106,11 +246,17 @@ public:
 
     void parseDeclaration()
     {
-        if (tokens[pos].type == T_INT || tokens[pos].type == T_FLOAT)
+        if (tokens[pos].type == T_INT || tokens[pos].type == T_FLOAT || tokens[pos].type == T_DOUBLE ||
+            tokens[pos].type == T_STRING || tokens[pos].type == T_BOOL || tokens[pos].type == T_CHAR)
         {
-            expect(tokens[pos].type); // Expect int or float
+            pos++; // Consume the type
             expect(T_ID);
             expect(T_SEMICOLON);
+        }
+        else
+        {
+            cout << "Syntax error at line " << tokens[pos].line << ": expected a data type but found " << tokens[pos].value << endl;
+            exit(1);
         }
     }
 
@@ -170,7 +316,7 @@ public:
 
     void parseFactor()
     {
-        if (tokens[pos].type == T_NUM || tokens[pos].type == T_FLOAT_NUM || tokens[pos].type == T_ID)
+        if (tokens[pos].type == T_NUM || tokens[pos].type == T_NUM_FLOAT || tokens[pos].type == T_ID)
         {
             pos++;
         }
@@ -182,7 +328,7 @@ public:
         }
         else
         {
-            cout << "Syntax error: unexpected token " << tokens[pos].value << endl;
+            cout << "Syntax error at line " << tokens[pos].line << ": unexpected token " << tokens[pos].value << endl;
             exit(1);
         }
     }
@@ -195,159 +341,33 @@ public:
         }
         else
         {
-            cout << "Syntax error: expected token " << type << " but found " << tokens[pos].value << " on line " << pos + 1 << endl;
+            cout << "Syntax error at line " << tokens[pos].line << ": expected token type " << type << " but found " << tokens[pos].value << endl;
             exit(1);
         }
     }
 };
 
-class lexer
-{
-private:
-    string src;
-    size_t pos;
-    size_t line;
-
-public:
-    lexer(const string &src)
-    {
-        this->src = src;
-        this->pos = 0;
-        this->line = 1;
-    }
-
-    string consumeNumber()
-    {
-        size_t start = pos;
-        while (pos < src.size() && (isdigit(src[pos]) || src[pos] == '.'))
-            pos++;
-        return src.substr(start, pos - start);
-    }
-
-    string consumeWord()
-    {
-        size_t start = pos;
-        while (pos < src.size() && isalnum(src[pos]))
-            pos++;
-        return src.substr(start, pos - start);
-    }
-
-    vector<Token> tokenizer()
-    {
-        vector<Token> tokens;
-        while (pos < src.size())
-        {
-            char current = src[pos];
-            if (isspace(current))
-            {
-                if (current == '\n') line++; // Increment line number on new line
-                pos++;
-                continue;
-            }
-            if (isdigit(current))
-            {
-                string number = consumeNumber();
-                // Check if the number contains a decimal point
-                if (number.find('.') != string::npos)
-                    tokens.push_back(Token{T_FLOAT_NUM, number}); // Float number
-                else
-                    tokens.push_back(Token{T_NUM, number}); // Integer number
-                continue;
-            }
-            if (isalpha(current))
-            {
-                string word = consumeWord();
-                if (word == "int")
-                    tokens.push_back(Token{T_INT, word});
-                else if (word == "float")
-                    tokens.push_back(Token{T_FLOAT, word});
-                else if (word == "if")
-                    tokens.push_back(Token{T_IF, word});
-                else if (word == "else")
-                    tokens.push_back(Token{T_ELSE, word});
-                else if (word == "return")
-                    tokens.push_back(Token{T_RETURN, word});
-                else
-                    tokens.push_back(Token{T_ID, word});
-                continue;
-            }
-
-            // Start of the switch case for handling special characters
-            switch (current)
-            {
-            case '=':
-                tokens.push_back(Token{T_ASSIGN, "="});
-                break;
-            case '+':
-                tokens.push_back(Token{T_PLUS, "+"});
-                break;
-            case '-':
-                tokens.push_back(Token{T_MINUS, "-"});
-                break;
-            case '*':
-                tokens.push_back(Token{T_MUL, "*"});
-                break;
-            case '/':
-                tokens.push_back(Token{T_DIV, "/"});
-                break;
-            case '(':
-                tokens.push_back(Token{T_LPAREN, "("});
-                break;
-            case ')':
-                tokens.push_back(Token{T_RPAREN, ")"});
-                break;
-            case '{':
-                tokens.push_back(Token{T_LBRACE, "{"});
-                break;
-            case '}':
-                tokens.push_back(Token{T_RBRACE, "}"});
-                break;
-            case ';':
-                tokens.push_back(Token{T_SEMICOLON, ";"});
-                break;
-            case '>':
-                tokens.push_back(Token{T_GT, ">"});
-                break;
-            default:
-                cout << "Line " << line << ": Unexpected character: " << current << endl;
-                exit(1);
-            }
-            pos++;
-        }
-        tokens.push_back(Token{T_EOF, ""});
-        return tokens;
-    }
-};
-
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        cout << "Usage: " << argv[0] << " <input_file>" << endl;
+        cerr << "Usage: " << argv[0] << " <input_file>" << endl;
         return 1;
     }
 
-    // Open the file
     ifstream file(argv[1]);
-    if (!file)
+    if (!file.is_open())
     {
-        cout << "Error: Cannot open file " << argv[1] << endl;
+        cerr << "Could not open file: " << argv[1] << endl;
         return 1;
     }
 
-    // Read file content into a string
     stringstream buffer;
     buffer << file.rdbuf();
-    string input = buffer.str();
+    string content = buffer.str();
+    Lexer lexer(content);
+    vector<Token> tokens = lexer.tokenizer();
 
-    // Close the file
-    file.close();
-
-    // Lexical analysis
-    lexer Lexer(input);
-    vector<Token> tokens = Lexer.tokenizer();
-
-    // Parsing
     Parser parser(tokens);
     parser.parseProgram();
 
